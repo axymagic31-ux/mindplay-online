@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MindPlay Online</title>
+<style>
+body{font-family:system-ui,Arial,sans-serif;max-width:680px;margin:24px auto;padding:0 14px;background:#101827;color:#f5f7fb}
+main{background:#1b2638;padding:20px;border-radius:16px}input,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #526078;margin:4px 0;max-width:100%}input{background:#fff;color:#111;width:94%}button{cursor:pointer;background:#c9e6ff;color:#132235;font-weight:700}section{margin:12px 0;padding:12px;background:#253349;border-radius:10px}.muted{color:#b7c4d6}#question{font-size:1.5rem;font-weight:700}li{margin:5px 0}
+</style>
+</head>
+<body><main>
+<h1>MindPlay Online</h1>
+<p class="muted">Prototipe awal — uji coba, belum versi final.</p>
+<section>
+<label>Nama pemain</label><br><input id="name" maxlength="24" placeholder="Nama tampilan">
+<br><button id="create">Buat ruangan</button>
+<hr>
+<label>Kode ruangan</label><br><input id="code" maxlength="8" placeholder="Contoh: A1B2">
+<br><button id="join">Gabung ruangan</button>
+</section>
+<section><b>Kode ruangan:</b> <span id="roomCode">—</span><br><b>Status:</b> <span id="status">Belum terhubung</span>
+<ul id="players"></ul>
+<button id="start">Mulai soal (host)</button></section>
+<section><div id="question">Soal akan muncul di sini.</div><p>Waktu tersisa: <span id="time">—</span></p>
+<input id="answer" type="number" step="any" placeholder="Jawaban angka">
+<br><button id="submit">Kirim jawaban</button>
+<p id="message" class="muted"></p><ol id="results"></ol>
+</section>
+</main>
+<script>
+let ws, token="", playerId="", roomCode="", endAt=null, ticker=null;
+const $=id=>document.getElementById(id);
+function connect(){if(ws && ws.readyState===WebSocket.OPEN)return;
+ const scheme=location.protocol==="https:"?"wss":"ws"; ws=new WebSocket(`${scheme}://${location.host}/ws`);
+ ws.onopen=()=>{$("status").textContent="Terhubung";};
+ ws.onmessage=e=>{const m=JSON.parse(e.data);
+ if(m.type==="welcome"){playerId=m.id;token=m.token;roomCode=m.code;$("roomCode").textContent=roomCode;localStorage.setItem("mpToken",token);localStorage.setItem("mpCode",roomCode);$("message").textContent="Berhasil masuk. Bagikan kode ruangan kepada teman.";}
+ if(m.type==="state"){const r=m.room;$("roomCode").textContent=r.code;$("status").textContent=r.status;$("players").innerHTML=r.players.map(p=>`<li>${escapeHtml(p.name)} — ${p.connected?"terhubung":"terputus"}</li>`).join("");
+ if(r.question){$("question").textContent=r.question.text;endAt=r.ends_at*1000;if(!ticker)ticker=setInterval(()=>{$("time").textContent=endAt?Math.max(0,Math.ceil((endAt-Date.now())/1000))+" detik":"—";},250);}
+ else $("question").textContent="Soal akan muncul di sini.";
+ }
+ if(m.type==="answer_received"){showResults(m.results);}
+ if(m.type==="finished"){$("message").textContent="Ronde selesai. Jawaban benar: "+m.actual;showResults(m.results);}
+ if(m.type==="error")$("message").textContent=m.message;
+ };
+ ws.onclose=()=>{$("status").textContent="Koneksi terputus";};
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function send(o){connect();if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(o));else ws.addEventListener("open",()=>ws.send(JSON.stringify(o)),{once:true});}
+$("create").onclick=()=>send({type:"create",name:$("name").value});
+$("join").onclick=()=>send({type:"join",name:$("name").value,code:$("code").value,token:localStorage.getItem("mpToken")||""});
+$("start").onclick=()=>send({type:"start"});
+$("submit").onclick=()=>send({type:"answer",answer:$("answer").value});
+function showResults(rs){$("results").innerHTML=rs.map(r=>`<li>${escapeHtml(r.name)} — selisih ${r.difference}, waktu ${r.seconds} detik</li>`).join("");}
+connect();
+</script></body></html>
